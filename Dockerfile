@@ -11,8 +11,8 @@
 # ---------------------------------------------------------------------
 # For local testing by maintainer:
 #
-# docker build --no-cache -t kimai-fpm --build-arg BASE=fpm .
-# docker build --no-cache -t kimai-apache --build-arg BASE=apache .
+# docker build --no-cache -t kimai-fpmapache --build-arg BASE=fpm .
+# docker build --no-cache -t kimai- --build-arg BASE=apache .
 # docker run -d --name kimai-apache-app kimai-apache
 # docker exec -ti kimai-apache-app /bin/bash
 # ---------------------------------------------------------------------
@@ -283,8 +283,26 @@ CMD [ "/entrypoint.sh" ]
 
 # development build
 FROM base AS dev
-# copy kimai develop source
+# copy kimai develop source 
 COPY --from=git-prod --chown=www-data:www-data /opt/kimai /opt/kimai
+# ---------------------------------------------------------------------------------------
+# copy kimai from Local Git cloned directory
+# RUN mkdir -p /opt/kimai/{bin,config,migrations,src,templates,translations,public,var}
+COPY symfony.lock kimai.sh eslint.config.mjs \
+    UPGRADING.md UPGRADING-1.md \
+    SECURITY.md README.md LICENSE Dockerfile \
+    CONTRIBUTING.md CHANGELOG.md composer.lock \
+    composer.json /opt/kimai/
+COPY bin/ /opt/kimai/bin/
+COPY config/ /opt/kimai/config/
+COPY migrations/ /opt/kimai/migrations/
+COPY src/ /opt/kimai/src/
+COPY templates/ /opt/kimai/templates/
+COPY translations/ /opt/kimai/translations/
+COPY public/ /opt/kimai/public/
+COPY var/ /opt/kimai/var/
+RUN chown -R www-data:www-data /opt/kimai && chmod -R 755 /opt/kimai
+# ---------------------------------------------------------------------------------------
 COPY .docker /assets
 # do the composer deps installation
 RUN \
@@ -306,6 +324,24 @@ ENV memory_limit=512M
 FROM base AS prod
 # copy kimai production source
 COPY --from=git-prod --chown=www-data:www-data /opt/kimai /opt/kimai
+# ---------------------------------------------------------------------------------------
+# copy kimai from Local Git cloned directory
+# RUN mkdir -p /opt/kimai/{bin,config,migrations,src,templates,translations,public,var}
+COPY symfony.lock kimai.sh eslint.config.mjs \
+    UPGRADING.md UPGRADING-1.md \
+    SECURITY.md README.md LICENSE Dockerfile \
+    CONTRIBUTING.md CHANGELOG.md composer.lock \
+    composer.json /opt/kimai/
+COPY bin/ /opt/kimai/bin/
+COPY config/ /opt/kimai/config/
+COPY migrations/ /opt/kimai/migrations/
+COPY src/ /opt/kimai/src/
+COPY templates/ /opt/kimai/templates/
+COPY translations/ /opt/kimai/translations/
+COPY public/ /opt/kimai/public/
+COPY var/ /opt/kimai/var/
+RUN chown -R www-data:www-data /opt/kimai && chmod -R 755 /opt/kimai
+# ---------------------------------------------------------------------------------------
 COPY .docker /assets
 # do the composer deps installation
 RUN \

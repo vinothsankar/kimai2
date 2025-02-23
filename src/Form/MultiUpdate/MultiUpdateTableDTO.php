@@ -71,7 +71,7 @@ class MultiUpdateTableDTO
 
     public function addUpdate(string $url): MultiUpdateTableDTO
     {
-        $this->actions['edit'] = $url;
+        $this->actions['action.edit'] = $url;
 
         return $this;
     }

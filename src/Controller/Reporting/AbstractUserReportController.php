@@ -19,6 +19,9 @@ use App\Repository\ProjectRepository;
 use App\Timesheet\TimesheetStatisticService;
 use DateTimeInterface;
 
+use App\Entity\Project;
+
+
 abstract class AbstractUserReportController extends AbstractController
 {
     public function __construct(protected TimesheetStatisticService $statisticService, private ProjectRepository $projectRepository, private ActivityRepository $activityRepository)
@@ -47,90 +50,242 @@ abstract class AbstractUserReportController extends AbstractController
 
     protected function prepareReport(DateTimeInterface $begin, DateTimeInterface $end, User $user): array
     {
-        $data = $this->getStatisticDataRaw($begin, $end, $user);
+        
+        $startDate = $begin->format('Y-m-d');  // Convert to string
+        $endDate = $end->format('Y-m-d');
 
-        $data = array_pop($data);
-        $projectIds = [];
-        $activityIds = [];
+        $projectData = $this->projectRepository->getDailyProjectData($user->getId(), $startDate, $endDate);
 
-        foreach ($data as $projectId => $projectValues) {
-            $projectIds[$projectId] = $projectId;
-            $dailyProjectStatistic = $this->createStatisticModel($begin, $end, $user);
-            foreach ($projectValues['activities'] as $activityId => $activityValues) {
-                $activityIds[$activityId] = $activityId;
-                if (!isset($data[$projectId]['duration'])) {
-                    $data[$projectId]['duration'] = 0;
-                }
-                if (!isset($data[$projectId]['rate'])) {
-                    $data[$projectId]['rate'] = 0.0;
-                }
-                if (!isset($data[$projectId]['internalRate'])) {
-                    $data[$projectId]['internalRate'] = 0.0;
-                }
-                if (!isset($data[$projectId]['activities'][$activityId]['duration'])) {
-                    $data[$projectId]['activities'][$activityId]['duration'] = 0;
-                }
-                if (!isset($data[$projectId]['activities'][$activityId]['rate'])) {
-                    $data[$projectId]['activities'][$activityId]['rate'] = 0.0;
-                }
-                if (!isset($data[$projectId]['activities'][$activityId]['internalRate'])) {
-                    $data[$projectId]['activities'][$activityId]['internalRate'] = 0.0;
-                }
-                /** @var StatisticDate $date */
-                foreach ($activityValues['data']->getData() as $date) {
-                    $statisticDate = $dailyProjectStatistic->getByDateTime($date->getDate());
-                    if ($statisticDate === null) {
-                        // this should not happen, but sometimes it does ...
-                        continue;
-                    }
-                    $statisticDate->setTotalDuration($statisticDate->getTotalDuration() + $date->getTotalDuration());
-                    $statisticDate->setTotalRate($statisticDate->getTotalRate() + $date->getTotalRate());
-                    $statisticDate->setTotalInternalRate($statisticDate->getTotalInternalRate() + $date->getTotalInternalRate());
-                    $data[$projectId]['duration'] = $data[$projectId]['duration'] + $date->getTotalDuration();
-                    $data[$projectId]['rate'] = $data[$projectId]['rate'] + $date->getTotalRate();
-                    $data[$projectId]['internalRate'] = $data[$projectId]['internalRate'] + $date->getTotalInternalRate();
-                    $data[$projectId]['activities'][$activityId]['duration'] = $data[$projectId]['activities'][$activityId]['duration'] + $date->getTotalDuration();
-                    $data[$projectId]['activities'][$activityId]['rate'] = $data[$projectId]['activities'][$activityId]['rate'] + $date->getTotalRate();
-                    $data[$projectId]['activities'][$activityId]['internalRate'] = $data[$projectId]['activities'][$activityId]['internalRate'] + $date->getTotalInternalRate();
-                }
-            }
-            $data[$projectId]['data'] = $dailyProjectStatistic;
-        }
+        $transformedData = [];
+        $dateWiseData = []; // Temporary array to group by date
 
-        $activities = $this->activityRepository->findByIds($activityIds);
-        foreach ($activities as $activity) {
-            $activityIds[$activity->getId()] = $activity;
-        }
+        foreach ($projectData as $entry) {
+            $workdate = $entry['workdate'];  // This will match the alias you used in the query: 'DATE(t.start_time) AS date'
+            $weekday = $entry['weekday'];
+            $projectName = $entry['project_name'];
+            $secondsWorked = $entry['total_duration'];   // This is in seconds
+            $jiraIds = $entry['jira_ids'];  
+            $description = $entry['description']; 
+            $component = $entry['component'];
 
-        foreach ($data as $projectId => $projectValues) {
-            foreach ($projectValues['activities'] as $activityId => $activityValues) {
-                $data[$projectId]['activities'][$activityId]['activity'] = $activityIds[$activityId];
-            }
-        }
+            // Convert seconds to hours
+            $hoursWorked = (int) ($secondsWorked / 3600);
 
-        $projects = $this->projectRepository->findByIds($projectIds);
-        foreach ($projects as $project) {
-            $data[$project->getId()]['project'] = $project;
-        }
-
-        $customers = [];
-        foreach ($data as $id => $row) {
-            $customerId = (string) $row['project']->getCustomer()->getId();
-            if (!\array_key_exists($customerId, $customers)) {
-                $customers[$customerId] = [
-                    'customer' => $row['project']->getCustomer(),
+            if (!isset($dateWiseData[$workdate])) {
+                $dateWiseData[$workdate] = [
+                    'workdate' => (new \DateTime($workdate))->format('j-M-Y'), // Format the date to '1-Jan-2025'
+                    'weekday' => $weekday,
+                    'name' => $user->getUsername(),
+                    'hours' => 0,
                     'projects' => [],
-                    'duration' => 0,
-                    'rate' => 0.0,
-                    'internalRate' => 0.0,
+                    'jira_ids' => [],
+                    'descriptions' => [],
+                    'components' => [],
                 ];
             }
-            $customers[$customerId]['projects'][$id] = $row;
-            $customers[$customerId]['duration'] += $row['duration'];
-            $customers[$customerId]['rate'] += $row['rate'];
-            $customers[$customerId]['internalRate'] += $row['internalRate'];
+
+            $dateWiseData[$workdate]['hours'] += $hoursWorked;
+            $dateWiseData[$workdate]['projects'][$projectName] = $projectName;
+            $dateWiseData[$workdate]['jira_ids'][] = $jiraIds;
+            $dateWiseData[$workdate]['descriptions'][] = $description;
+            $dateWiseData[$workdate]['components'][] = $component;
         }
 
-        return $customers;
+        // Transform grouped data to the final format
+        foreach ($dateWiseData as $entry) {
+            $transformedData[] = [
+                'name' => $entry['name'],
+                'workdate' => $entry['workdate'],
+                'weekday' => $entry['weekday'],
+                'hours' => $entry['hours'],
+                'projects' => implode(', ', $entry['projects']),
+                'jira_ids' => implode(', ', $entry['jira_ids']),
+                'descriptions' => implode(', ', $entry['descriptions']),
+                'components' => implode(', ', $entry['components']),
+            ];
+        }
+
+        return $transformedData;
     }
+
+
+    protected function prepareAllUsersReport(array $userIds, string $startDate, string $endDate, ?Project $project = null): array
+    {
+        $projectData = $this->projectRepository->getAllUsersProjectData($userIds, $startDate, $endDate, $project);
+
+        $reportData = [];
+        
+        // Collect all dates for the reporting period
+        $dates = [];
+        $current = new \DateTime($startDate);
+        $endDt = new \DateTime($endDate);
+        while ($current <= $endDt) {
+            $dates[] = $current->format('Y-m-d');
+            $current->modify('+1 day');
+        }
+
+        // Step 1: Group data by user
+        foreach ($projectData as $entry) {
+            $username = $entry['username'];
+            $role = $entry['role'] ?? 'N/A';
+            $workdate = $entry['workdate'];
+            $onsiteDuration = (int)($entry['onsite_duration']/3600);
+            $offsiteDuration = (int)($entry['offsite_duration']/3600);
+            $totalDuration = (int)($entry['total_duration']/3600);
+            $activityName = strtolower(trim($entry['activity_name'] ?? ''));
+
+            // Assume $entry contains a user_id field. If not, you might need to add it in your query.
+            $userId = $entry['user_id'] ?? null;
+            // echo 'report user : ' .$userId;
+
+            if (!isset($reportData[$username])) {
+                $teamNames = [];
+                if ($userId !== null) {
+                    // echo ' report getTeamsForUser getting called user : ' .$userId;
+                    $teams = $this->projectRepository->getTeamsForUser($userId, $project ? $project->getId() : null);
+                    $teamNames = array_map(function ($team) {
+                        return $team['name'];
+                    }, $teams);
+                }
+                $team = !empty($teamNames) ? implode(', ', $teamNames) : 'N/A';
+
+                 // Initialize daily arrays
+                $reportData[$username] = [
+                    'name'       => $username,
+                    'role'       => $role,
+                    'team'       => $team,
+                    'total_work' => 0,
+                    'onsite'     => 0,
+                    'offsite'    => 0,
+                    'daily'      => array_fill_keys($dates, 0),
+                     // store all activity names for each day
+                    'activities' => array_fill_keys($dates, [])
+                ];
+            }
+            // Accumulate totals
+            $reportData[$username]['total_work'] += $totalDuration;
+            $reportData[$username]['onsite'] += $onsiteDuration;
+            $reportData[$username]['offsite'] += $offsiteDuration;
+
+             // Accumulate daily total
+            $reportData[$username]['daily'][$workdate] += $totalDuration;
+
+            // Save the activity name for that day
+            $reportData[$username]['activities'][$workdate][] = $activityName;
+        }
+
+        // Step 2: Build final pivot and check for 'leave' codes
+        // define the short codes for your known activities
+        $leaveMap = [
+            'weekoff'       => 'W',
+            'week-off'      => 'W',
+            'comp-off'      => 'C',
+            'vacation'      => 'V',
+            'sick'          => 'S',
+            'emergency'     => 'S',
+            'sick/emergency'=> 'S',
+            'ad dolorum'=>'AD'
+        ];
+
+        // Step 2: Prepare the final pivot report
+        $finalReport = [];
+
+        foreach ($reportData as $userRow) {
+            $row = [
+                'name'       => $userRow['name'],
+                'role'       => $userRow['role'],
+                'team'       => $userRow['team'],
+                'total_work' => $userRow['total_work'],
+                'onsite'     => $userRow['onsite'],
+                'offsite'    => $userRow['offsite'],
+            ];
+
+            // For each day, if total is 0, check if the day has any 'leave' type activity
+            foreach ($dates as $date) {
+                $val = $userRow['daily'][$date];
+                if ($val === 0) {
+                    // see if any activity is in leaveMap
+                    $dayActivities = $userRow['activities'][$date] ?? [];
+                    // default code is 0 if no recognized leave found
+                    $code = 0;
+                    foreach ($dayActivities as $act) {
+                        if (isset($leaveMap[$act])) {
+                            $code = $leaveMap[$act];
+                            break;
+                        }
+                    }
+                    $row[$date] = $code; // either 0 or 'W','C','S','V'
+                } else {
+                    // just keep the numeric total
+                    $row[$date] = $val;
+                }
+            }
+
+            $finalReport[] = $row;
+        }
+        // exit;
+        $this->appendTotalsRow($finalReport, $dates);
+        return $finalReport;
+        // var_dump($finalReport);
+        // exit;
+
+    }
+
+    /**
+     * Appends a Totals row to $finalReport that sums total_work, onsite, offsite,
+     * and numeric daily columns.
+     */
+    private function appendTotalsRow(array &$finalReport, array $dates): void
+    {
+        // If no data, do nothing
+        if (empty($finalReport)) {
+            return;
+        }
+
+        // 1) Create an empty totals row
+        $totalsRow = [
+            'name'       => 'Totals',
+            'role'       => '',
+            'team'       => '',
+            'total_work' => 0,
+            'onsite'     => 0,
+            'offsite'    => 0,
+        ];
+
+        // Initialize each date column
+        foreach ($dates as $d) {
+            $totalsRow[$d] = 0;
+        }
+
+        // 2) Accumulate sums
+        foreach ($finalReport as $row) {
+
+            // Skip if this row is already a totals row (if that's possible)
+            // if ($row['name'] === 'Totals') {
+            //     continue;
+            // }
+
+            // sum monthly columns if numeric
+            if (isset($row['total_work']) && is_numeric($row['total_work'])) {
+                $totalsRow['total_work'] += $row['total_work'];
+            }
+            if (isset($row['onsite']) && is_numeric($row['onsite'])) {
+                $totalsRow['onsite'] += $row['onsite'];
+            }
+            if (isset($row['offsite']) && is_numeric($row['offsite'])) {
+                $totalsRow['offsite'] += $row['offsite'];
+            }
+
+            // sum each date column if numeric
+            foreach ($dates as $d) {
+                if (isset($row[$d]) && is_numeric($row[$d])) {
+                    $totalsRow[$d] += $row[$d];
+                }
+            }
+        }
+
+        // 3) Append the totals row to $finalReport
+        $finalReport[] = $totalsRow;
+    }
+
 }

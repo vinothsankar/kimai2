@@ -19,16 +19,12 @@ use App\Repository\Query\TimesheetQuery;
 use OpenSpout\Writer\CSV\Options;
 use OpenSpout\Writer\CSV\Writer;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Contracts\Translation\TranslatorInterface;
 
 final class CsvRenderer implements RendererInterface, TimesheetExportInterface
 {
     use ExportTrait;
 
-    public function __construct(
-        private readonly SpreadsheetRenderer $spreadsheetRenderer,
-        private readonly TranslatorInterface $translator
-    )
+    public function __construct(private readonly SpreadsheetRenderer $spreadsheetRenderer)
     {
     }
 
@@ -67,7 +63,7 @@ final class CsvRenderer implements RendererInterface, TimesheetExportInterface
         $options = new Options();
         $options->SHOULD_ADD_BOM = false;
 
-        $spreadsheet = new SpoutSpreadsheet(new Writer($options), $this->translator);
+        $spreadsheet = new SpoutSpreadsheet(new Writer($options));
         $spreadsheet->open($filename);
 
         $this->spreadsheetRenderer->registerFormatter('date', new DateStringFormatter());

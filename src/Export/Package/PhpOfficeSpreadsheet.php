@@ -15,7 +15,6 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
-use Symfony\Contracts\Translation\TranslatorInterface;
 
 final class PhpOfficeSpreadsheet implements SpreadsheetPackage
 {
@@ -24,7 +23,7 @@ final class PhpOfficeSpreadsheet implements SpreadsheetPackage
     private int $currentRow = 1;
     private ?string $filename = null;
 
-    public function __construct(private readonly TranslatorInterface $translator)
+    public function __construct()
     {
         $this->spreadsheet = new Spreadsheet();
         $this->worksheet = $this->spreadsheet->getActiveSheet();
@@ -83,9 +82,9 @@ final class PhpOfficeSpreadsheet implements SpreadsheetPackage
     }
 
     /**
-     * @param array<Column> $columns
+     * @param array<string> $columns
      */
-    public function setColumns(array $columns): void
+    public function setHeader(array $columns): void
     {
         if ($this->worksheet === null) {
             throw new \Exception('Cannot re-use spreadsheet after calling save()');
@@ -93,9 +92,8 @@ final class PhpOfficeSpreadsheet implements SpreadsheetPackage
 
         $counter = 1;
         foreach ($columns as $column) {
-            $title = $this->translator->trans($column->getHeader());
             $pos = CellAddress::fromColumnAndRow($counter, 1);
-            $this->worksheet->setCellValue($pos, $title);
+            $this->worksheet->setCellValue($pos, $column);
             $style = $this->worksheet->getStyle($pos);
             $style->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
             $style->getFont()->setBold(true);

@@ -41,7 +41,7 @@ class Kernel extends BaseKernel
 
     public function getLogDir(): string
     {
-        return $this->getProjectDir() . '/var/log';
+        return $this->getProjectDir() . '/Kimai_log/log';
     }
 
     protected function build(ContainerBuilder $container): void

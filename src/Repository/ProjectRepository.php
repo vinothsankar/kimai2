@@ -6,7 +6,6 @@
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
  */
-
 namespace App\Repository;
 
 use App\Entity\Activity;
@@ -507,4 +506,103 @@ class ProjectRepository extends EntityRepository
 
         return $query;
     }
+
+    /**
+     * Fetch project data grouped by date for given user and time range. By VK
+     *
+     * @param int $userId
+     * @param string $startDate
+     * @param string $endDate
+     * @return array
+     */
+    public function getDailyProjectData(int $userId, string $startDate, string $endDate): array
+    {
+        $queryBuilder = $this->_em->getConnection()->createQueryBuilder();
+
+        $queryBuilder
+        ->select('DATE(t.start_time) AS workdate', 't.day AS weekday', 'u.username', 'p.name AS project_name', 
+                    'SUM(t.duration) AS total_duration', 't.jira_ids', 't.description', 'a.name AS component')
+        ->from('kimai2_timesheet', 't')
+        ->join('t', 'kimai2_users', 'u', 'u.id = t.user')
+        ->join('t', 'kimai2_projects', 'p', 'p.id = t.project_id')
+        ->join('t', 'kimai2_activities', 'a', 'a.id = t.activity_id')  // Join with the activities table
+        ->where('t.user = :userId')
+        ->andWhere('t.start_time BETWEEN :startDate AND :endDate')
+        ->groupBy('DATE(t.start_time), t.day, p.name, u.username, t.jira_ids, t.description', 'a.name')
+        ->orderBy('p.name')
+        ->addOrderBy('DATE(t.start_time)')
+        ->setParameters([
+            'userId' => $userId,
+            'startDate' => $startDate,
+            'endDate' => $endDate
+        ]);
+
+        return $queryBuilder->executeQuery()->fetchAllAssociative();
+    }
+
+    public function getAllUsersProjectData(array $userIds, string $startDate, string $endDate, ?Project $project = null): array
+    {
+        $queryBuilder = $this->_em->getConnection()->createQueryBuilder();
+        // echo 'user Id : ' .implode(',', $userIds);
+
+        $queryBuilder->select(
+            't.user AS user_id',
+            'u.username',
+            'u.title AS role',
+            'DATE(t.start_time) AS workdate',
+            'SUM(CASE WHEN LOWER(TRIM(t.location)) = \'on-site\' THEN t.duration ELSE 0 END) AS onsite_duration',
+            'SUM(CASE WHEN LOWER(TRIM(t.location)) = \'off-site\' THEN t.duration ELSE 0 END) AS offsite_duration',
+            'SUM(t.duration) AS total_duration',
+            'a.name AS activity_name'
+        )
+        ->from('kimai2_timesheet', 't')
+        ->join('t', 'kimai2_users', 'u', 'u.id = t.user')
+        ->join('t', 'kimai2_projects', 'p', 'p.id = t.project_id')
+        ->join('t', 'kimai2_activities', 'a', 'a.id = t.activity_id')
+        ->where($queryBuilder->expr()->in('t.user', ':userIds'))
+        ->andWhere('t.start_time BETWEEN :startDate AND :endDate')
+        ->groupBy('u.id, DATE(t.start_time), t.location','a.name')
+        ->orderBy('u.username')
+        ->addOrderBy('DATE(t.start_time)')
+        ->setParameter('userIds', $userIds, \Doctrine\DBAL\Connection::PARAM_INT_ARRAY)
+        ->setParameter('startDate', $startDate)
+        ->setParameter('endDate', $endDate);
+
+        if (!empty($project)) {
+            $queryBuilder
+                ->andWhere('t.project_id = :projectId')
+                ->setParameter('projectId', $project->getId());
+        }
+
+        return $queryBuilder->executeQuery()->fetchAllAssociative();
+        // var_dump($queryBuilder->executeQuery()->fetchAllAssociative());
+        // exit;
+    }
+
+    public function getTeamsForUser(int $userId, ?int $projectId = null): array
+    {   
+        // echo 'Inside getTeansForUser user Id : ' .$userId;
+
+        $queryBuilder = $this->_em->getConnection()->createQueryBuilder();
+
+        // Start by joining the teams with the user-team mapping.
+        $queryBuilder->select('t.*')
+            ->from('kimai2_teams', 't')
+            ->innerJoin('t', 'kimai2_users_teams', 'ut', 't.id = ut.team_id')
+            ->where('ut.user_id = :userId')
+            ->setParameter('userId', $userId);
+
+        // If a project is specified, join the project-teams mapping table and filter.
+        if ($projectId !== null) {
+            $queryBuilder->innerJoin('t', 'kimai2_projects_teams', 'pt', 't.id = pt.team_id')
+                ->andWhere('pt.project_id = :projectId')
+                ->setParameter('projectId', $projectId);
+        }
+
+        return $queryBuilder->executeQuery()->fetchAllAssociative();
+        // var_dump($queryBuilder->executeQuery()->fetchAllAssociative());
+        // exit;
+    }
+
+
 }

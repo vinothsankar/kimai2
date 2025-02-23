@@ -34,6 +34,9 @@ use Symfony\Component\Form\FormEvent;
 use Symfony\Component\Form\FormEvents;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 use Symfony\Component\Validator\Constraints\NotBlank;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
+use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
+
 
 /**
  * Defines the form used to manipulate Timesheet entries.
@@ -136,6 +139,26 @@ class TimesheetEditForm extends AbstractType
             $descriptionOptions['attr'] = ['autofocus' => 'autofocus'];
         }
         $builder->add('description', DescriptionType::class, $descriptionOptions);
+
+        // Adding JiraId to populate in the timesheet entry form by VK
+        $builder->add('jiraId', TextType::class, [
+            'label' => 'Jira ID',
+            'required' => false,
+            // 'attr' => [
+            //     'placeholder' => 'Enter Jira ID',
+            // ],
+        ]);
+
+        $builder->add('location', ChoiceType::class, [
+            'label'       => 'Location',
+            'choices'     => [
+                'On-site'  => 'on-site',
+                'Off-site' => 'off-site',
+            ],
+            'placeholder' => 'Select location',
+            'required'    => false,
+        ]);
+
         $builder->add('tags', TagsType::class, ['required' => false]);
         $this->addRates($builder, $currency, $options);
         $this->addUser($builder, $options);
@@ -310,10 +333,6 @@ class TimesheetEditForm extends AbstractType
 
         $builder->add('duration', DurationType::class, $durationOptions);
 
-        if ($this->systemConfiguration->isBreakTimeEnabled()) {
-            $builder->add('break', DurationType::class, ['label' => 'break', 'required' => false]);
-        }
-
         $builder->addEventListener(
             FormEvents::POST_SET_DATA,
             function (FormEvent $event) {
@@ -325,6 +344,7 @@ class TimesheetEditForm extends AbstractType
             }
         );
 
+
         // make sure that duration is mapped back to end field
         $builder->addEventListener(
             FormEvents::SUBMIT,
@@ -333,8 +353,27 @@ class TimesheetEditForm extends AbstractType
                 $timesheet = $event->getData();
 
                 $newDuration = $event->getForm()->get('duration')->getData();
-                if ($newDuration !== null && $newDuration > 0 && $newDuration !== $timesheet->getDuration()) {
-                    // TODO allow to use a duration that differs from end-start by adding a system configuration check here
+
+                // if ($newDuration !== null && $newDuration > 0 && $newDuration !== $timesheet->getDuration()) {
+                //     // TODO allow to use a duration that differs from end-start by adding a system configuration check here
+                //     if ($timesheet->getEnd() === null) {
+                //         $timesheet->setDuration($newDuration);
+                //     }
+                // }
+
+
+                // If no duration is provided or it is 0, explicitly set duration to 0
+                // and set end equal to begin (if available) to prevent auto-calculation.
+                if ($newDuration === null || $newDuration == 0) {
+                    $timesheet->setDuration(0);
+                    if ($timesheet->getBegin() !== null) {
+                        $timesheet->setEnd(clone $timesheet->getBegin());
+                    }
+                    // Exit early: do not run further auto-calculation
+                    return;
+                }
+                // For non-zero duration, update the duration if needed.
+                if ($newDuration > 0 && $newDuration !== $timesheet->getDuration()) {
                     if ($timesheet->getEnd() === null) {
                         $timesheet->setDuration($newDuration);
                     }
@@ -342,11 +381,19 @@ class TimesheetEditForm extends AbstractType
 
                 $duration = $timesheet->getDuration() ?? 0;
 
-                // only apply the duration, if the end is not yet set.
+                // only apply the duration, if the end is not yet set
                 // without that check, the end would be overwritten and the real end time would be lost
+                // if (($forceApply && $duration > 0) || ($duration > 0 && $timesheet->isRunning())) {
+                //     $end = clone $timesheet->getBegin();
+                //     $end->modify('+ ' . $duration . 'seconds');
+                //     $timesheet->setEnd($end);
+                // }
+
+                // Only update the end time if duration is non-zero and the timesheet is running,
+                // or if forceApply is enabled.
                 if (($forceApply && $duration > 0) || ($duration > 0 && $timesheet->isRunning())) {
                     $end = clone $timesheet->getBegin();
-                    $end->modify('+ ' . $duration . 'seconds');
+                    $end->modify('+ ' . $duration . ' seconds');
                     $timesheet->setEnd($end);
                 }
             }

@@ -46,9 +46,6 @@
                 {% endif %}
             {% endif %}
 
-            {% if form.break is defined %}
-                {{ form_row(form.break, {'row_attr': {'class': 'mb-3 ' ~ form.vars.name ~ '_row_' ~ form.break.vars.name}}) }}
-            {% endif %}
             {% if form.customer is defined %}
                 {{ form_row(form.customer, {'row_attr': {'class': 'mb-3 ' ~ form.vars.name ~ '_row_' ~ form.customer.vars.name}}) }}
             {% endif %}
@@ -58,6 +55,16 @@
             {% if form.activity is defined %}
                 {{ form_row(form.activity, {'row_attr': {'class': 'mb-3 ' ~ form.vars.name ~ '_row_' ~ form.activity.vars.name}}) }}
             {% endif %}
+            
+            {% if form.location is defined %}
+                {{ form_row(form.location, {'row_attr': {'class': 'mb-3 ' ~ form.vars.name ~ '_row_' ~ form.location.vars.name}}) }}
+            {% endif %}
+
+            {% if form.jiraId is defined %}
+                {{ form_row(form.jiraId, {'row_attr': {'class': 'mb-3 ' ~ form.vars.name ~ '_row_' ~ form.jiraId.vars.name}}) }}
+            {% endif %}
+
+
             {% if form.description is defined %}
                 {{ form_row(form.description, {'row_attr': {'class': 'mb-3 ' ~ form.vars.name ~ '_row_' ~ form.description.vars.name}}) }}
             {% endif %}

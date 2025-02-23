@@ -543,7 +543,6 @@ class ProjectRepository extends EntityRepository
     public function getAllUsersProjectData(array $userIds, string $startDate, string $endDate, ?Project $project = null): array
     {
         $queryBuilder = $this->_em->getConnection()->createQueryBuilder();
-        // echo 'user Id : ' .implode(',', $userIds);
 
         $queryBuilder->select(
             't.user AS user_id',
@@ -575,14 +574,10 @@ class ProjectRepository extends EntityRepository
         }
 
         return $queryBuilder->executeQuery()->fetchAllAssociative();
-        // var_dump($queryBuilder->executeQuery()->fetchAllAssociative());
-        // exit;
     }
 
     public function getTeamsForUser(int $userId, ?int $projectId = null): array
     {   
-        // echo 'Inside getTeansForUser user Id : ' .$userId;
-
         $queryBuilder = $this->_em->getConnection()->createQueryBuilder();
 
         // Start by joining the teams with the user-team mapping.
@@ -600,8 +595,7 @@ class ProjectRepository extends EntityRepository
         }
 
         return $queryBuilder->executeQuery()->fetchAllAssociative();
-        // var_dump($queryBuilder->executeQuery()->fetchAllAssociative());
-        // exit;
+
     }
 
 

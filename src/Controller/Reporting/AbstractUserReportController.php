@@ -136,12 +136,10 @@ abstract class AbstractUserReportController extends AbstractController
 
             // Assume $entry contains a user_id field. If not, you might need to add it in your query.
             $userId = $entry['user_id'] ?? null;
-            // echo 'report user : ' .$userId;
 
             if (!isset($reportData[$username])) {
                 $teamNames = [];
                 if ($userId !== null) {
-                    // echo ' report getTeamsForUser getting called user : ' .$userId;
                     $teams = $this->projectRepository->getTeamsForUser($userId, $project ? $project->getId() : null);
                     $teamNames = array_map(function ($team) {
                         return $team['name'];
@@ -223,12 +221,9 @@ abstract class AbstractUserReportController extends AbstractController
 
             $finalReport[] = $row;
         }
-        // exit;
+        
         $this->appendTotalsRow($finalReport, $dates);
         return $finalReport;
-        // var_dump($finalReport);
-        // exit;
-
     }
 
     /**
@@ -261,9 +256,9 @@ abstract class AbstractUserReportController extends AbstractController
         foreach ($finalReport as $row) {
 
             // Skip if this row is already a totals row (if that's possible)
-            // if ($row['name'] === 'Totals') {
-            //     continue;
-            // }
+            if ($row['name'] === 'Totals') {
+                continue;
+            }
 
             // sum monthly columns if numeric
             if (isset($row['total_work']) && is_numeric($row['total_work'])) {
